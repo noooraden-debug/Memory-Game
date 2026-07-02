@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>تحدي الذاكرة البصرية - Memory Blast</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <style>
+        :root { --bg-main: #0b0f19; --bg-card: #161f30; --accent-cyan: #06b6d4; --accent-gold: #f59e0b; --accent-green: #10b981; --accent-rose: #f43f5e; --text-main: #f8fafc; --text-muted: #94a3b8; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; user-select: none; }
+        body { background-color: var(--bg-main); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; align-items: center; overflow-x: hidden; padding-bottom: 40px; }
+        .app-container { width: 100%; max-width: 480px; padding: 15px; display: flex; flex-direction: column; gap: 15px; }
+        
+        header { background: linear-gradient(135deg, #1e293b, #0f172a); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 15px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        .logo-title { font-size: 24px; font-weight: 800; background: linear-gradient(to left, var(--accent-cyan), #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; cursor: pointer; }
+        .stats-bar { display: flex; justify-content: space-between; margin-top: 12px; font-size: 14px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px; }
+        .stat-box { display: flex; flex-direction: column; gap: 2px; }
+        .stat-val { font-weight: bold; color: var(--accent-gold); }
+
+        .live-promo-banner { background: linear-gradient(90deg, #1e1b4b, #311042); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 12px; padding: 12px; font-size: 13px; text-align: center; line-height: 1.5; }
+        .live-counter { display: inline-block; background: rgba(0,0,0,0.4); padding: 2px 8px; border-radius: 20px; color: var(--accent-cyan); font-weight: bold; margin: 0 4px; }
+
+        /* لافتة الفوز */
+        .winner-banner { display: none; background: linear-gradient(90deg, var(--accent-gold), #b45309); color: white; padding: 10px; border-radius: 12px; text-align: center; font-weight: bold; font-size: 14px; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.5); animation: popDown 0.5s ease-out forwards; }
+        @keyframes popDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .game-card { background-color: var(--bg-card); border-radius: 20px; padding: 20px; min-height: 340px; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); }
+        .game-status-text { font-size: 16px; font-weight: 600; margin-bottom: 15px; text-align: center; min-height: 24px; }
+        
+        /* مؤقت التحدي الثنائي */
+        .battle-timer { display: none; font-size: 20px; font-weight: bold; color: var(--accent-rose); margin-bottom: 10px; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 15px; border: 1px solid var(--accent-rose); }
+        .battle-scores { display: none; width: 100%; justify-content: space-between; margin-bottom: 15px; font-size: 14px; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 10px; }
+
+        .grid-container { display: grid; gap: 10px; width: 100%; max-width: 280px; aspect-ratio: 1; margin: 0 auto; }
+        .grid-item { background-color: #242f47; border-radius: 10px; cursor: pointer; transition: transform 0.1s, background-color 0.1s; box-shadow: inset 0 0 15px rgba(0,0,0,0.2); }
+        .grid-item:active { transform: scale(0.92); }
+        .grid-item.active-flash { background-color: var(--accent-cyan) !important; box-shadow: 0 0 20px var(--accent-cyan); }
+        .grid-item.success-click { background-color: var(--accent-green) !important; box-shadow: 0 0 15px var(--accent-green); }
+        .grid-item.error-click { background-color: var(--accent-rose) !important; box-shadow: 0 0 15px var(--accent-rose); }
+
+        .btn-primary { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; border: none; padding: 12px 20px; font-size: 15px; font-weight: bold; border-radius: 12px; cursor: pointer; width: 85%; margin-top: 15px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); }
+        .btn-continue { background: linear-gradient(135deg, var(--accent-gold), #b45309); box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4); margin-top: 10px; display: flex; justify-content: center; align-items: center; gap: 8px; }
+        .btn-secondary { background: transparent; color: var(--text-muted); border: 1px solid var(--text-muted); margin-top: 10px; box-shadow: none; }
+        .btn-battle { background: linear-gradient(135deg, var(--accent-rose), #9f1239); box-shadow: 0 4px 15px rgba(244, 63, 94, 0.4); }
+
+        .loss-overlay, .overlay-block { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(11, 15, 25, 0.95); border-radius: 20px; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10; padding: 20px; text-align: center; }
+        .pricing-list { width: 100%; display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; }
+        .price-item { background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); padding: 10px; border-radius: 8px; display: flex; justify-content: space-between; font-size: 13px; align-items: center; }
+        .whatsapp-btn { background-color: #25d366; color: white; text-decoration: none; padding: 12px; border-radius: 10px; font-weight: bold; width: 100%; display: flex; justify-content: center; gap: 8px; margin-bottom: 15px; }
+        .code-input { background-color: #0f172a; border: 1px solid #334155; color: white; padding: 10px; border-radius: 8px; text-align: center; width: 100%; margin-bottom: 10px;}
+
+        .tabs-container { background-color: var(--bg-card); border-radius: 16px; padding: 15px; }
+        .tabs-header { display: flex; border-bottom: 2px solid rgba(255,255,255,0.1); margin-bottom: 12px; gap: 5px;}
+        .tab-btn { flex: 1; background: none; border: none; color: var(--text-muted); padding: 10px 5px; font-weight: bold; font-size: 12px;}
+        .tab-btn.active-tab { color: var(--accent-cyan); border-bottom: 2px solid var(--accent-cyan); margin-bottom: -2px; }
+        .leaderboard-list { display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; }
+        .leaderboard-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 8px; font-size: 13px; }
+        .rank-badge { padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 11px; background-color: #334155;}
+        .rank-1 .rank-badge { background-color: var(--accent-gold); color: black; }
+
+        .dev-panel { display: none; background-color: #1e1b4b; border: 2px dashed var(--accent-gold); border-radius: 16px; padding: 15px; margin-top: 15px; }
+        .challenge-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; margin-bottom: 8px; font-size: 13px;}
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        
+        <div id="globalWinnerBanner" class="winner-banner">🏆 تم إعلان فائز جديد!</div>
+
+        <header>
+            <div class="logo-title" id="appLogo" onclick="handleLogoClick()">تحدي الذاكرة البصرية ⚡</div>
+            <div id="welcomeMessage" style="font-size: 12px; color: var(--accent-cyan); margin-top: 4px;"></div>
+            
+            <div class="stats-bar">
+                <div class="stat-box"><span>المستوى</span><span class="stat-val" id="currentLevel">1</span></div>
+                <div class="stat-box"><span>الرقم القياسي</span><span class="stat-val" id="highScore">0</span></div>
+                <div class="stat-box"><span>المحاولات</span><span class="stat-val" id="remainingAttempts" style="color: var(--accent-rose);">3</span></div>
+            </div>
+        </header>
+
+        <div class="live-promo-banner">
+            <div>👥 <b>إحصائيات مباشرة</b></div>
+            <div>عدد المشتركين الفعلي الآن: <span class="live-counter" id="realSubCount">جاري الاتصال...</span></div>
+        </div>
+
+        <div class="game-card" id="gameCard">
+            <div class="battle-timer" id="battleTimer">01:30</div>
+            <div class="battle-scores" id="battleScores">
+                <div style="color: var(--accent-cyan)">أنت: <span id="myBattleScore">1</span></div>
+                <div style="color: var(--accent-rose)">الخصم: <span id="oppBattleScore">1</span></div>
+            </div>
+
+            <div class="game-status-text" id="gameStatusText">مستعد لاختبار قوة ذاكرتك؟</div>
+            <div class="grid-container" id="gridContainer"></div>
+            <button class="btn-primary" id="startBtn" onclick="startNewLevel()">ابدأ التحدي العادي</button>
+
+            <div class="loss-overlay" id="lossOverlay" style="display: none;">
+                <h3 style="color: var(--accent-rose); margin-bottom: 10px;">انتهى الوقت! 💥</h3>
+                <p id="lossMessage" style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;"></p>
+                <button class="btn-primary btn-continue" id="continueBtn" onclick="continueLevel()">
+                    <span>أكمل من المستوى الحالي</span>
+                    <span id="continueCostBadge" style="background: rgba(0,0,0,0.3); padding: 2px 8px; border-radius: 10px; font-size: 12px;"></span>
+                </button>
+                <button class="btn-primary btn-secondary" onclick="restartFromLevelOne()">إعادة من البداية (مجاناً)</button>
+            </div>
+
+            <div class="overlay-block" id="lockOverlay" style="display: none;">
+                <h3 style="color: var(--accent-rose); margin-bottom: 10px;">⚠️ رصيد المحاولات فارغ!</h3>
+                <div class="pricing-list">
+                    <label class="price-item"><span><input type="radio" name="pkg" value="5" checked> 5 محاولات</span><span style="color: var(--accent-gold);">10,000 ل.س</span></label>
+                    <label class="price-item"><span><input type="radio" name="pkg" value="10"> 10 محاولات</span><span style="color: var(--accent-gold);">15,000 ل.س</span></label>
+                </div>
+                <a href="#" id="whatsappLink" class="whatsapp-btn" onclick="sendWhatsAppRequest()">💬 اطلب الكود عبر الواتساب</a>
+                <input type="text" id="activationCodeInput" class="code-input" placeholder="أدخل كود الشحن">
+                <button class="btn-primary" style="width: 100%; margin-top: 0;" onclick="processActivationCode()">تفعيل الكود</button>
+                <button class="btn-primary btn-secondary" style="width: 100%; margin-top: 10px;" onclick="closeLockOverlayIfPossible()">عودة</button>
+            </div>
+        </div>
+
+        <div class="tabs-container">
+            <div class="tabs-header">
+                <button class="tab-btn active-tab" id="tabScore" onclick="switchTab('score')">🏆 المتصدرين</button>
+                <button class="tab-btn" id="tabBattle" onclick="switchTab('battle')">⚔️ صالة التحديات 1v1</button>
+            </div>
+            
+            <div id="regularLeaderboardArea">
+                <div class="leaderboard-list" id="leaderboardContent"></div>
+            </div>
+
+            <div id="battleLobbyArea" style="display: none;">
+                <button class="btn-primary btn-battle" style="width: 100%; margin-top: 0; margin-bottom: 15px;" onclick="createBattleRequest()">⚔️ اطلب تحدي جديد (خصم 1 محاولة كرهان)</button>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">طلبات التحدي المتاحة حالياً:</div>
+                <div class="leaderboard-list" id="activeChallengesList">
+                    </div>
+                <div style="margin-top: 20px; font-size: 12px; color: var(--accent-gold); font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; margin-bottom: 10px;">أبطال التحديات الثنائية:</div>
+                <div class="leaderboard-list" id="dualLeaderboardContent"></div>
+            </div>
+        </div>
+
+        <div class="dev-panel" id="devPanel">
+            <h3 style="color: var(--accent-gold); margin-bottom: 10px; font-size: 16px;">🛠️ الإدارة العليا</h3>
+            <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                <button class="btn-primary" style="flex:1; padding: 8px; font-size: 12px; background:#4338ca;" onclick="genAdminCode(5)">+5</button>
+                <button class="btn-primary" style="flex:1; padding: 8px; font-size: 12px; background:#6d28d9;" onclick="genAdminCode(10)">+10</button>
+                <button class="btn-primary" style="flex:1; padding: 8px; font-size: 12px; background:#701a75;" onclick="genAdminCode(25)">+25</button>
+            </div>
+            <div id="generatedCodeDisplay" style="background: rgba(0,0,0,0.5); padding: 12px; text-align: center; color: #22c55e; border-radius: 5px; font-family: monospace; margin-bottom: 15px; font-size: 16px; font-weight: bold; cursor: default;">
+                اضغط على الأزرار لتوليد كود
+            </div>
+            <button class="btn-primary btn-secondary" style="width: 100%;" onclick="document.getElementById('devPanel').style.display='none'">إغلاق اللوحة</button>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyA56yclx4hMraln_bOCbVhFUII48Z2sU7I",
+            authDomain: "memory-d95fc.firebaseapp.com",
+            databaseURL: "https://memory-d95fc-default-rtdb.firebaseio.com",
+            projectId: "memory-d95fc",
+            storageBucket: "memory-d95fc.firebasestorage.app",
+            messagingSenderId: "886779145011",
+            appId: "1:886779145011:web:fd51d183d9f204d99b6c46"
+        };
+        
+        let db; let isOnlineMode = false;
+        try { firebase.initializeApp(firebaseConfig); db = firebase.database(); isOnlineMode = true; } catch(e) { console.log("نمط محلي"); }
+
+        let config = {
+            currentLevel: 1, attempts: 3, highScore: 0, dualWins: 0,
+            gridSize: 2, flashCount: 3, sequence: [], userSequence: [],
+            isShowingSequence: false, activeTab: 'score', logoClickCount: 0, secretClicks: 0
+        };
+
+        const myUserId = localStorage.getItem('mb_userid') || 'user_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('mb_userid', myUserId);
+        
+        // متغيرات التحدي الثنائي
+        let battleMode = false;
+        let activeBattleId = null;
+        let battleTimeLeft = 90;
+        let battleTimerInterval = null;
+        let myBattleScore = 1;
+
+        window.onload = function() {
+            if(localStorage.getItem('mb_attempts') !== null) config.attempts = parseInt(localStorage.getItem('mb_attempts'));
+            if(localStorage.getItem('mb_highscore') !== null) config.highScore = parseInt(localStorage.getItem('mb_highscore'));
+            if(localStorage.getItem('mb_dualwins') !== null) config.dualWins = parseInt(localStorage.getItem('mb_dualwins'));
+            
+            updateUIStrings(); renderGrid(); checkNamePrompt();
+            
+            if(isOnlineMode) {
+                registerRealUser(); listenToRealData(); listenToChallenges(); listenToActiveBattles(); listenToGlobalWinner();
+            }
+            document.getElementById('tabScore').addEventListener('click', handleSecretLeaderboardTrick);
+        };
+
+        function updateUIStrings() {
+            document.getElementById('currentLevel').innerText = config.currentLevel;
+            document.getElementById('highScore').innerText = config.highScore;
+            document.getElementById('remainingAttempts').innerText = config.attempts;
+        }
+
+        function renderGrid() {
+            const container = document.getElementById('gridContainer');
+            container.innerHTML = '';
+            let lvl = battleMode ? myBattleScore : config.currentLevel;
+            
+            if (lvl <= 3) { config.gridSize = 2; config.flashCount = lvl + 2; }
+            else if (lvl <= 7) { config.gridSize = 3; config.flashCount = lvl + 1; }
+            else { config.gridSize = 4; config.flashCount = lvl; }
+
+            container.style.gridTemplateColumns = `repeat(${config.gridSize}, 1fr)`;
+            for (let i = 0; i < config.gridSize * config.gridSize; i++) {
+                let cell = document.createElement('div'); cell.classList.add('grid-item'); cell.dataset.id = i;
+                cell.addEventListener('click', handleCellClick); container.appendChild(cell);
+            }
+        }
+
+        function startNewLevel() {
+            if(!battleMode && config.attempts <= 0) { document.getElementById('lockOverlay').style.display = 'flex'; return; }
+            
+            config.isShowingSequence = true; config.sequence = []; config.userSequence = [];
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('gameStatusText').innerText = "احفظ الوميض بدقة...";
+
+            let totalCells = config.gridSize * config.gridSize;
+            for (let i = 0; i < config.flashCount; i++) config.sequence.push(Math.floor(Math.random() * totalCells));
+
+            let lvl = battleMode ? myBattleScore : config.currentLevel;
+            let speedDelay = Math.max(250, 700 - (lvl * 40)); 
+            let index = 0;
+
+            let interval = setInterval(() => {
+                let cell = document.querySelector(`.grid-item[data-id='${config.sequence[index]}']`);
+                if(cell) { cell.classList.add('active-flash'); setTimeout(() => cell.classList.remove('active-flash'), speedDelay - 80); }
+                index++;
+                if (index >= config.sequence.length) {
+                    clearInterval(interval);
+                    setTimeout(() => { config.isShowingSequence = false; document.getElementById('gameStatusText').innerText = "قلد الترتيب الآن!"; }, speedDelay);
+                }
+            }, speedDelay);
+        }
+
+        function handleCellClick(e) {
+            if (config.isShowingSequence || config.sequence.length === 0) return;
+            let clickedId = parseInt(e.target.dataset.id);
+            let expectedId = config.sequence[config.userSequence.length];
+
+            config.userSequence.push(clickedId);
+            if (clickedId === expectedId) {
+                e.target.classList.add('success-click'); setTimeout(() => e.target.classList.remove('success-click'), 150);
+                if (config.userSequence.length === config.sequence.length) handleLevelWin();
+            } else {
+                e.target.classList.add('error-click'); setTimeout(() => e.target.classList.remove('error-click'), 300);
+                handleLevelLoss();
+            }
+        }
+
+        function handleLevelWin() {
+            if(battleMode) {
+                myBattleScore++;
+                document.getElementById('myBattleScore').innerText = myBattleScore;
+                if(isOnlineMode && activeBattleId) db.ref('battles/' + activeBattleId + '/scores/' + myUserId).set(myBattleScore);
+                renderGrid(); setTimeout(() => startNewLevel(), 500);
+            } else {
+                document.getElementById('gameStatusText').innerText = `تم اجتياز المستوى ${config.currentLevel} 🎉`;
+                if (config.currentLevel > config.highScore) {
+                    config.highScore = config.currentLevel; localStorage.setItem('mb_highscore', config.highScore); syncMyDataToFirebase();
+                }
+                config.currentLevel++; updateUIStrings(); renderGrid(); renderLeaderboard();
+                document.getElementById('startBtn').innerText = `ابدأ المستوى ${config.currentLevel}`;
+                document.getElementById('startBtn').style.display = 'block';
+            }
+        }
+
+        function handleLevelLoss() {
+            if(battleMode) {
+                // في وضع التحدي: لا خصم محاولات، يبدأ من جديد بسرعة لحصد النقاط
+                myBattleScore = Math.max(1, myBattleScore - 1); // عقوبة بسيطة درجة للوراء
+                document.getElementById('myBattleScore').innerText = myBattleScore;
+                document.getElementById('gameStatusText').innerText = "خطأ! استمر باللعب..";
+                renderGrid(); setTimeout(() => startNewLevel(), 500);
+            } else {
+                let cost = config.currentLevel <= 5 ? 3 : 5;
+                document.getElementById('lossMessage').innerText = `تكلفة الإكمال: ${cost} محاولات.`;
+                document.getElementById('continueCostBadge').innerText = `خصم ${cost}`;
+                document.getElementById('lossOverlay').style.display = 'flex';
+            }
+        }
+
+        function continueLevel() { /* منطق الخسارة العادي - مخفي للاختصار */ document.getElementById('lossOverlay').style.display = 'none'; document.getElementById('startBtn').style.display = 'block'; }
+        function restartFromLevelOne() { config.attempts--; localStorage.setItem('mb_attempts', config.attempts); config.currentLevel = 1; document.getElementById('lossOverlay').style.display = 'none'; updateUIStrings(); renderGrid(); document.getElementById('startBtn').style.display = 'block'; }
+
+        // ================= التحديات الثنائية =================
+        function createBattleRequest() {
+            if(config.attempts < 1) return alert("رصيدك لا يكفي لإنشاء تحدي. اشحن أولاً.");
+            let uname = localStorage.getItem('mb_username') || "مجهول";
+            db.ref('challenges/' + myUserId).set({ hostId: myUserId, hostName: uname, status: 'waiting', timestamp: Date.now() });
+            alert("تم إرسال الطلب للصالة! بانتظار الخصم...");
+        }
+
+        function acceptChallenge(hostId, hostName) {
+            if(config.attempts < 1) return alert("تحتاج محاولة واحدة على الأقل للقبول.");
+            let uname = localStorage.getItem('mb_username') || "مجهول";
+            let battleId = hostId + "_" + myUserId;
+            
+            // إنشاء المعركة
+            db.ref('battles/' + battleId).set({
+                hostId: hostId, hostName: hostName, guestId: myUserId, guestName: uname,
+                scores: { [hostId]: 1, [myUserId]: 1 }, status: 'playing', startTime: Date.now() + 3000
+            });
+            // حذف الطلب
+            db.ref('challenges/' + hostId).remove();
+        }
+
+        function listenToChallenges() {
+            db.ref('challenges').on('value', snap => {
+                let list = document.getElementById('activeChallengesList'); list.innerHTML = '';
+                let challenges = snap.val();
+                if(challenges) {
+                    for(let k in challenges) {
+                        let c = challenges[k];
+                        if(c.status === 'waiting' && c.hostId !== myUserId) {
+                            list.innerHTML += `<div class="challenge-item"><span>⚔️ تحدي من: <b>${c.hostName}</b></span> <button class="btn-primary" style="margin:0; width:auto; padding:5px 10px;" onclick="acceptChallenge('${c.hostId}', '${c.hostName}')">قبول</button></div>`;
+                        } else if (c.status === 'waiting' && c.hostId === myUserId) {
+                            list.innerHTML += `<div class="challenge-item" style="background: rgba(255,255,255,0.1); border-color:#555;"><span>⏳ طلبك قيد الانتظار...</span></div>`;
+                        }
+                    }
+                } else { list.innerHTML = `<div style="font-size:12px; text-align:center; color:var(--text-muted)">لا توجد تحديات حالياً. كن الأول!</div>`; }
+            });
+        }
+
+        function listenToActiveBattles() {
+            db.ref('battles').on('value', snap => {
+                let battles = snap.val();
+                if(battles) {
+                    for(let k in battles) {
+                        let b = battles[k];
+                        // إذا كنت طرفاً في المعركة وبدأت
+                        if((b.hostId === myUserId || b.guestId === myUserId) && b.status === 'playing' && !battleMode) {
+                            startDualBattleMode(k, b);
+                        }
+                        // تحديث النتيجة أثناء اللعب
+                        if(battleMode && activeBattleId === k) {
+                            let oppId = (b.hostId === myUserId) ? b.guestId : b.hostId;
+                            if(b.scores && b.scores[oppId]) document.getElementById('oppBattleScore').innerText = b.scores[oppId];
+                        }
+                    }
+                }
+            });
+        }
+
+        function startDualBattleMode(bId, bData) {
+            battleMode = true; activeBattleId = bId; myBattleScore = 1; battleTimeLeft = 90;
+            document.getElementById('myBattleScore').innerText = "1"; document.getElementById('oppBattleScore').innerText = "1";
+            
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('battleTimer').style.display = 'inline-block';
+            document.getElementById('battleScores').style.display = 'flex';
+            document.getElementById('gameStatusText').innerText = "تحدي مفتوح! اجمع أعلى النقاط!";
+            
+            renderGrid(); setTimeout(() => startNewLevel(), 2000);
+
+            battleTimerInterval = setInterval(() => {
+                battleTimeLeft--;
+                let m = Math.floor(battleTimeLeft / 60); let s = battleTimeLeft % 60;
+                document.getElementById('battleTimer').innerText = `${m < 10 ? '0'+m : m}:${s < 10 ? '0'+s : s}`;
+                
+                if(battleTimeLeft <= 0) {
+                    clearInterval(battleTimerInterval);
+                    endDualBattle(bData);
+                }
+            }, 1000);
+        }
+
+        function endDualBattle(bData) {
+            battleMode = false; activeBattleId = null;
+            document.getElementById('battleTimer').style.display = 'none';
+            document.getElementById('battleScores').style.display = 'none';
+            
+            let myId = myUserId;
+            let oppId = (bData.hostId === myId) ? bData.guestId : bData.hostId;
+            let oppName = (bData.hostId === myId) ? bData.guestName : bData.hostName;
+            let myFinalScore = myBattleScore;
+            let oppFinalScore = parseInt(document.getElementById('oppBattleScore').innerText);
+
+            let msg = `انتهى التحدي!\nنتيجتك: ${myFinalScore}\nنتيجة ${oppName}: ${oppFinalScore}\n\n`;
+            
+            if(myFinalScore > oppFinalScore) {
+                msg += "🎉 مبروك! لقد فزت. تم سحب محاولة من الخصم لك.";
+                config.attempts++; config.dualWins++;
+                db.ref('winner_announcement').set({ text: `🔥 ${localStorage.getItem('mb_username')} سحق ${oppName} في التحدي الثنائي!`, time: Date.now() });
+            } else if (myFinalScore < oppFinalScore) {
+                msg += "💥 للأسف، خسرت التحدي وتم خصم محاولة.";
+                config.attempts = Math.max(0, config.attempts - 1);
+            } else { msg += "⚖️ تعادل! لا خصم ولا جوائز."; }
+
+            localStorage.setItem('mb_attempts', config.attempts);
+            localStorage.setItem('mb_dualwins', config.dualWins);
+            syncMyDataToFirebase(); updateUIStrings(); alert(msg);
+            
+            document.getElementById('gameStatusText').innerText = "عدنا للوضع العادي";
+            config.currentLevel = 1; renderGrid(); document.getElementById('startBtn').innerText = "البدء"; document.getElementById('startBtn').style.display = 'block';
+        }
+
+        function listenToGlobalWinner() {
+            db.ref('winner_announcement').on('value', snap => {
+                let data = snap.val();
+                if(data && Date.now() - data.time < 10000) { // إظهار لـ 10 ثواني فقط
+                    let banner = document.getElementById('globalWinnerBanner');
+                    banner.innerText = data.text;
+                    banner.style.display = 'block';
+                    setTimeout(() => banner.style.display = 'none', 5000);
+                }
+            });
+        }
+
+        // ================= التبويبات والمتصدرين والإدارة =================
+        function switchTab(t) { 
+            config.activeTab = t; 
+            document.getElementById('tabScore').classList.remove('active-tab'); document.getElementById('tabBattle').classList.remove('active-tab');
+            if(t === 'score') { document.getElementById('tabScore').classList.add('active-tab'); document.getElementById('regularLeaderboardArea').style.display = 'block'; document.getElementById('battleLobbyArea').style.display = 'none'; }
+            else { document.getElementById('tabBattle').classList.add('active-tab'); document.getElementById('regularLeaderboardArea').style.display = 'none'; document.getElementById('battleLobbyArea').style.display = 'block'; }
+            renderLeaderboard();
+        }
+
+        function handleSecretLeaderboardTrick() {
+            config.secretClicks++;
+            if(config.secretClicks >= 5) {
+                config.secretClicks = 0;
+                if(prompt("رمز الإدارة:") === "2026") {
+                    let type = prompt("أين تريد تصدر اسمك؟ (1: اللوحة العادية | 2: لوحة التحديات)");
+                    let val = prompt("أدخل الرقم الوهمي للصدارة:");
+                    if(val) {
+                        if(type === "1") localStorage.setItem('mb_dev_force_score', val);
+                        if(type === "2") localStorage.setItem('mb_dev_force_dual', val);
+                        alert("تم حقن الاسم بنجاح!"); renderLeaderboard();
+                    }
+                }
+            }
+        }
+
+        function renderLeaderboard() {
+            let listReg = document.getElementById('leaderboardContent'); listReg.innerHTML = '';
+            let listDual = document.getElementById('dualLeaderboardContent'); listDual.innerHTML = '';
+            
+            let arrReg = []; let arrDual = [];
+            if(window.allUsersDB) {
+                for(let k in window.allUsersDB) {
+                    let u = window.allUsersDB[k];
+                    arrReg.push({name: u.name, score: u.highScore || 0});
+                    arrDual.push({name: u.name, score: u.dualWins || 0});
+                }
+            } else {
+                let m = localStorage.getItem('mb_username') || 'أنت';
+                arrReg.push({name: m, score: config.highScore}); arrDual.push({name: m, score: config.dualWins});
+            }
+
+            // الحيلة
+            if(localStorage.getItem('mb_dev_force_score')) arrReg.push({name: "المهندس نور الدين", score: parseInt(localStorage.getItem('mb_dev_force_score')), isDev: true});
+            if(localStorage.getItem('mb_dev_force_dual')) arrDual.push({name: "المهندس نور الدين", score: parseInt(localStorage.getItem('mb_dev_force_dual')), isDev: true});
+
+            arrReg.sort((a,b) => b.score - a.score);
+            arrDual.sort((a,b) => b.score - a.score);
+
+            arrReg.forEach((p, i) => { listReg.innerHTML += `<div class="leaderboard-item"><span class="rank-badge rank-${i+1}">#${i+1}</span> <span style="color:${p.isDev?'var(--accent-gold)':'white'}">${p.name}</span> <span style="color:var(--accent-cyan)">مستوى ${p.score}</span></div>`; });
+            arrDual.forEach((p, i) => { if(p.score > 0 || p.isDev) listDual.innerHTML += `<div class="leaderboard-item"><span class="rank-badge rank-${i+1}">⚔️</span> <span style="color:${p.isDev?'var(--accent-gold)':'white'}">${p.name}</span> <span style="color:var(--accent-rose)">${p.score} فوز</span></div>`; });
+        }
+
+        // نسخ الكود في لوحة المهندس
+        function genAdminCode(amt) {
+            let rand = Math.random().toString(36).substr(2, 4).toUpperCase(); let sum = (amt * 2) + 2026;
+            let code = `MB-${amt}-${rand}-${sum}`;
+            let box = document.getElementById('generatedCodeDisplay');
+            box.innerText = code; box.style.cursor = 'pointer';
+            box.onclick = function() {
+                navigator.clipboard.writeText(code).then(() => alert("تم نسخ الكود: " + code + "\nيمكنك مشاركته الآن."));
+            };
+        }
+
+        function handleLogoClick() {
+            config.logoClickCount++;
+            if(config.logoClickCount >= 5) {
+                config.logoClickCount = 0;
+                if(prompt("رمز المهندس:") === "2026") document.getElementById('devPanel').style.display = 'block';
+            }
+        }
+
+        function checkNamePrompt() { if(!localStorage.getItem('mb_username')) { let n = prompt("أدخل اسمك الحقيقي للتسجيل:"); if(n) localStorage.setItem('mb_username', n); syncMyDataToFirebase(); } }
+        function registerRealUser() { syncMyDataToFirebase(); }
+        function syncMyDataToFirebase() { if(isOnlineMode && localStorage.getItem('mb_username')) db.ref('users/' + myUserId).set({ name: localStorage.getItem('mb_username'), highScore: config.highScore, dualWins: config.dualWins }); }
+        function listenToRealData() { db.ref('users').on('value', snap => { window.allUsersDB = snap.val(); if(window.allUsersDB) { document.getElementById('realSubCount').innerText = Object.keys(window.allUsersDB).length; renderLeaderboard(); } }); }
+        function sendWhatsAppRequest() { window.location.href = `https://wa.me/963957869853`; }
+        function processActivationCode() {
+            let code = document.getElementById('activationCodeInput').value.trim();
+            if(localStorage.getItem(`used_${code}`)) return alert("هذا الكود مستخدم مسبقاً!");
+            let parts = code.split('-');
+            if(parts[0] === 'MB' && parts.length === 4) {
+                config.attempts += parseInt(parts[1]); localStorage.setItem('mb_attempts', config.attempts); localStorage.setItem(`used_${code}`, "true");
+                alert(`تم الشحن بنجاح!`); document.getElementById('lockOverlay').style.display = 'none'; updateUIStrings();
+            } else alert("كود خاطئ!");
+        }
+        function closeLockOverlayIfPossible() { if(config.attempts > 0) document.getElementById('lockOverlay').style.display = 'none'; else alert("رصيدك صفر!"); }
+    </script>
+</body>
+</html>
